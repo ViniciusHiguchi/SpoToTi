@@ -8,6 +8,7 @@ Created on Sun Aug  6 01:20:14 2023
 # -*- coding: utf-8 -*-
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from thefuzz import fuzz
 
 scope = "playlist-read-private,user-library-read,user-follow-read"
 #setting up spotify client
@@ -107,10 +108,13 @@ def collectAllArtists(col):
         for j in i['artists']:
             col.update({j['name']: {'tid':None, 'sid':j['uri'], 'self' : j['name'], 'albums' : {}}})
             
-    for i in playlists:
-        for j in i['playlist']['tracks']:
-            for k in j['artists']:
-                col.update({k['name']: {'tid':None, 'sid':k['uri'], 'self' : k['name'], 'albums' : {}}})
+    for i in playlists_d:
+        try:
+            for j in i['tracks']:
+                for k in j['artists']:
+                    col.update({k['name']: {'tid':None, 'sid':k['uri'], 'self' : k['name'], 'albums' : {}}})
+        except:
+            print()
                 
     for i in artist_objs:
         col.update({i.name: {'tid' : None, 'sid' : i.sid, 'self':i.name, 'albums' : {}}})
@@ -123,8 +127,14 @@ def collectAllSongs(col):
     
     for i in playlists_d:
         for j in i['tracks']:
-            col.update({j['name'] : {'tid':None, 'sid':j['uri'], 'self' : j['name'], 'artist' : j['artists'][0]['name'], 'album' : j['album']['name']}})
-        
+            col.update({j['name'] : {'tid':None, 'sid':j['uri'], 'self' : j['name'], 'artist' : j['artists'][0]['name'], 'album' : j['album']['name']}}) 
+            
+def tidal_get_artists(session):
+    trq = tidalapi.Requests(session)
+    responses = {}
+    for artist in artist_collection.keys():
+        responses.update({artist: trq.request('GET', '/v1/search/top-hits', params={'query':artist,'limit':25,'offset':0,'types':'ARTISTS','countryCode':'BR'}).json()})
+    return responses
         
 #%%
 #getting the paginated requests into lists (each index is a page) 
@@ -193,16 +203,45 @@ for k, v in song_collection.items():
 
 #now we have to index all Tidal id's into the artist_collection
 #later, we use the objs arrays along with the indexed collection to create the playlists, like the songs, and follow artists and albums in Tidal
+#%%
+import tidalapi
 
+session = tidalapi.Session()
+# Will run until you visit the printed url and link your account
+session.login_oauth_simple()
+#%%
 
+responses = tidal_get_artists(session)
+#%%
+match_artists = {}
+unfound = []
+for artist, response in responses.items():
+    found = False
+    for artist_r in response['artists']['items']:
+        if artist.upper().replace(' ', '') == artist_r['name'].upper().replace(' ', '') and artist_r['artistTypes'] != ['CONTRIBUTOR']:
+            found = True
+            if artist not in match_artists.keys():
+                match_artists.update({artist:[]})
+            match_artists[artist].append(artist_r)
+    if found == False:
+        for artist_r in response['artists']['items']:
+            ratio = fuzz.ratio(artist, artist_r['name'])
+            if ratio > 60 and artist_r['artistTypes'] != ['CONTRIBUTOR']:
+                found = True
+                if artist not in match_artists.keys():
+                    match_artists.update({artist:[]})
+                print(f'fuzz {ratio} artist_spo {artist} artist_t {artist_r["name"]}')
+                match_artists[artist].append(artist_r)
+    if found == False:
+        unfound.append({artist:response})
+    
+#%%
 
-
-
-
-
-
-
-
+for i in responses.keys():
+    if i not in list(match_artists.keys()):
+        print(artist_collection[i])
+        print('\n')
+            
 
     
     
